@@ -80,24 +80,77 @@ const App = component(() => {
 });
 
 App();
-App.render();
-
-
 */
 
+let rebindings = {};
+
 let typeId = 0;
-function component(f) {
-  const type = f.name + '~' + typeId++;
+function component(
+  render,
+  constructOrEvents,
+  constructOrNull,
+) {
+  let events;
+  let construct;
+  if (typeof constructOrEvents == 'object') {
+    events = constructOrEvents;
+  } else if (typeof constructOrEvents == 'function') {
+    construct = constructOrEvents;
+    constructOrNull = null;
+  }
+  if (constructOrNull) {
+    construct = constructOrNull;
+  }
+
+  const type = render.name + '-' + typeId++;
   let id = 0;
-  return () => {
+  function* generator(props) {
+    let model;
+    if (construct) {
+      model = construct();
+    }
     const self = {
-      id: type + '~' + id++,
+      id: model ? model.id + '-' : '' + type + '-' + id++,
     };
     while (true) {
-      const rendered = f.apply(self, ...arguments);
+      const rendered = f.call(self, props);
+      if (events) {
+        rebindings[self.id] = events;
+      }
+      // If we re-rendered then we need to re-bind events.
+      // push this component id onto a queue along with the events to bind
+      // TODO: when a dom tree is removed, are the listeners on those nodes removed?
       yield injectId(id, rendered);
     }
+  }
+
+  return (props) => {
+    // instead of a generator make it an object
+    // return it.
+    // new invocations update state on it.
   };
+}
+
+let renderQueue = null;
+function requestRender(rootId, component) {
+  if (renderQueue == null) {
+    renderQueue = [];
+    requestAnimationFrame(render);
+  }
+
+  renderQueue.push([rootId, component]);
+}
+
+function render() {
+  // TODO: this is where we would topologically sort and de-dupe parent-child renderings.
+  // If a parent wants to render then don't call render on its children.
+  // B/c the parent will re-render the child anyway.
+  const operations = renderQueue;
+  renderQueue = null;
+  for (let op of operations) {
+    // TODO: can we re-pass old props if the component itself requested re-render of itself?
+    document.getElementById(op[0]).innerHTML = component();
+  }
 }
 
 function event(component, cb) {
