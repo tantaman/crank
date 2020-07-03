@@ -117,11 +117,12 @@ could type:
 component(
   // render func. has a this that is the component
   (props) => ...,
+  (props) => model, // tells us what the data model is for the component for pinpoint updates.
   // events. has a this that is the component
+  // we bind events using the selectors scoped to the root id of the component.
   {
     button: (props) => ...,
-  }
-  // we bind events using the selectors scoped to the root id of the component.
+  },
 );
 */
 
@@ -144,4 +145,9 @@ function bind(component, data) {
   // However, if we get a change event on some data model
   // only the parent most component should update and none of the siblings that also are bound to that same model.
   // So we need to track hierarchy.
+
+  // We could ask the dom or we could try to track it ourselves.
+  // E.g., we'll know every node that should process the event.
+  // We can ask the dom which ones are descendants of the other and topologically sort them.
+  // And there can be multiple trees that need updating as the nodes could be siblings.
 }
