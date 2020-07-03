@@ -82,16 +82,66 @@ const App = component(() => {
 App();
 App.render();
 
+
+*/
+
+let typeId = 0;
 function component(f) {
-  const type = TX++;
-  // Can return a generator? Every generator will have "memory"?
-  // The id can be persisted in the generator.
-  // It'll yield the rendered thing and sear the same id over and over!
-  // and have the same `this` and such and such and so on!
+  const type = f.name + '~' + typeId++;
+  let id = 0;
   return () => {
-    const id = ...; // id always new?
-    const rendered = f.apply({}, ...arguments);
-    return injectId(id, rendered);
+    const self = {
+      id: type + '~' + id++,
+    };
+    while (true) {
+      const rendered = f.apply(self, ...arguments);
+      yield injectId(id, rendered);
+    }
   };
 }
+
+function event(component, cb) {
+  // component has the id in it
+  // we need to return a string that calls cb.
+  // we can generate a new symbol
+  // and stick it into our map.
+  // how do we remove the old one(s) from our map?
+  // we don't know when stuff is unmounted, do we?
+  // or will our mutation observer tell us?
+  // the user could do events based on selectors...
+  // we can get handle the binding that way...
+}
+
+/*
+could type:
+component(
+  // render func. has a this that is the component
+  (props) => ...,
+  // events. has a this that is the component
+  {
+    button: (props) => ...,
+  }
+  // we bind events using the selectors scoped to the root id of the component.
+);
 */
+
+function injectId(id, html) {
+  // regex to stick it into the first returned node.
+  // what if the user wants to set an ID? meh. That shouldn't really happen much.
+}
+
+function bind(component, data) {
+  // data is our "relational data" that the component will sync with whenever
+  // an update to it is committed to the local db
+  // What if we want ephemeral commits?
+
+  // how will we unbind component from data?
+  // occasional garbage collection routine to see if components still exist?
+  // weak references?
+  // can a dom node listen for its detachment?
+  // or we can never directly bind. We can make our id prefixed by the data model's id and do querySelectors when a piece of data changes.
+
+  // However, if we get a change event on some data model
+  // only the parent most component should update and none of the siblings that also are bound to that same model.
+  // So we need to track hierarchy.
+}
