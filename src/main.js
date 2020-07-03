@@ -61,3 +61,37 @@ document.getElementById("first").innerHTML = `<span id="z"><a>nest</a></span>`;
 // observer.disconnect();
 
 // can we use mutation observers and have a component map based on data id?
+
+/*
+Our component method can sear an ID into the string being returned.
+We will record these ids in a map.
+Then we can select all the nodes with those ids.
+Then we can insert them all into our map of id -> component instance.
+
+function() {
+
+}
+
+const App = component(() => {
+  bind(this, dataModel);
+  return html`
+    <div onclick="${event(this, () => ...)}">${SubComponent()}</div>
+  `;
+});
+
+App();
+App.render();
+
+function component(f) {
+  const type = TX++;
+  // Can return a generator? Every generator will have "memory"?
+  // The id can be persisted in the generator.
+  // It'll yield the rendered thing and sear the same id over and over!
+  // and have the same `this` and such and such and so on!
+  return () => {
+    const id = ...; // id always new?
+    const rendered = f.apply({}, ...arguments);
+    return injectId(id, rendered);
+  };
+}
+*/
