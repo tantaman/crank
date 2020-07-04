@@ -41,7 +41,7 @@ function component(
 
   const type = render.name + '-' + typeId++;
   let id = 0;
-  function ret(props) {
+  function ret(props, state) {
     let model;
     if (construct) {
       model = construct();
@@ -49,7 +49,7 @@ function component(
     const self = {
       id: model ? model.id + '-' : '' + type + '-' + id++,
     };
-    const rendered = render.call(self, props);
+    const rendered = render.call(self, props, state);
     // If we re-rendered then we need to re-bind events.
     // push this component id onto a queue along with the events to bind
     if (events) {
@@ -59,17 +59,18 @@ function component(
     return injectId(self.id, rendered);
   }
 
+  ret.symbol = Symbol(render.name);
   return ret;
 }
 
 let renderQueue = null;
-function requestRender(rootId, component) {
+function requestRender(rootId, component, props, state) {
   if (renderQueue == null) {
     renderQueue = [];
     requestAnimationFrame(render);
   }
 
-  renderQueue.push([rootId, component]);
+  renderQueue.push([rootId, component, props, state]);
 }
 
 function render() {
@@ -78,9 +79,9 @@ function render() {
   // B/c the parent will re-render the child anyway.
   const operations = renderQueue;
   renderQueue = null;
-  for (let op of operations) {
+  for (let [rootId, component, props, state] of operations) {
     // TODO: can we re-pass old props if the component itself requested re-render of itself?
-    document.getElementById(op[0]).innerHTML = op[1]().__html__;
+    document.getElementById(rootId).innerHTML = component(props, state).__html__;
   }
 
   // TODO: go through rebindings and bind events
@@ -112,18 +113,6 @@ function rebindEvents(rebindings) {
   );
 }
 
-function event(component, cb) {
-  // component has the id in it
-  // we need to return a string that calls cb.
-  // we can generate a new symbol
-  // and stick it into our map.
-  // how do we remove the old one(s) from our map?
-  // we don't know when stuff is unmounted, do we?
-  // or will our mutation observer tell us?
-  // the user could do events based on selectors...
-  // we can get handle the binding that way...
-}
-
 function injectId(id, html) {
   html.__html__ =
     html.__html__.replace(/\<([A-z]+)/, (match, c1) => `<${c1} id="${id}"`);
@@ -131,29 +120,85 @@ function injectId(id, html) {
   return html;
 }
 
+const modelListeners = {};
 function bind(component, data) {
-  // How do we find component functions
-  // for the given model?
-  // in a map.
+  let listeners = modelListeners[data.id];
+  if (listeners == null) {
+    listeners = {};
+    modelListeners[data.id] = listeners;
+  }
+  listeners[component.symbol] = component;
 
-  // How do we find nodes?
-  // Prefix ID search?
-  // If no node exists, remove model -> component function mappings for that id
+  // ocasionally garbage collect listeners?
+  // by looking for elements based on model id prefix?
 }
+
+// What if the app developer managed the state tree that is passed all
+// around? and lenses it down to sub-components?
+// Our the component function could sub-tree it?
+//
+
+
+// If dev has to `lense` the state to alloc it, how will we free it?
+// State could be aware of lense calls made on it from an ID root at render
+// and if those calls are not made on a subsequent render then they
+// clear?
+// To do updates, the component functions know what state instance they're
+// handling on when it is updated. A single listener can be used
+// and triggered.
+// This means components can not share state then?
+// Model objects would be the shared state?
+// Can the component function track what components are invoked and auto-lense?
+// We know when components invoke sub-components and can thus lense down the state
+// for them.
+// But we don't know how to handle re-ordered components of the same type?
+// We don't know what "name" to give to the state.
+// A conditional button followed by a non-conditional button.
+class State {
+  constructor() {
+    this._listener = null;
+  }
+
+  lense(name) {
+    const old = this[name];
+    if (old !== undefined) {
+      return old;
+    }
+    return this[name] = new State();
+  }
+
+  destroy() {
+    this._listener = null;
+  }
+
+  set(state) {
+    // TODO: errors on overriding methods.
+    Object.keys(state).forEach(k => this[k] = state[k]);
+    this._listener();
+  }
+}
+
+const button = component(
+  function Button(props, state) {
+    return html`<button>Click me!</button>`;
+  },
+  {
+      '':  ['click', () => console.log('clicked')],
+  },
+);
 
 requestRender(
   'content',
   component(
-    function App() {
-      return html`<div>Heyoo!</div>`;
+    function App(props, state) {
+      return html`<div>Heyoo!<br />${button(null, state.lense('button'))}</div>`;
     },
     // add model getter.
     // model getters have to be stateless too then? :|
     // How does component local state work? Since they're pure functions...
     // Component local state in the relational local DB too?
     // And bound to that as the model?
-    {
-      '':  ['click', () => console.log('clicked')],
-    },
   ),
+  {},
+  new State(),
 );
