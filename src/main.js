@@ -20,70 +20,7 @@ const html = (parts, ...values) => {
   };
 };
 
-// Components can bind to their own objects and request their own updates.
-// So rather than re-render the entire display we render components whose objects updated.
-// local relational db.
-// listen to the db records as they are committed.
-// identity based on id.
-// how do we fix event handling in this template mode?
-// how about async functions for rendering?
-
-function loaded() {
-  console.log("loaded");
-}
-
-// Select the node that will be observed for mutations
-const targetNode = document.getElementById("content");
-
-// Options for the observer (which mutations to observe)
-const config = {
-  subtree: true,
-  childList: true,
-};
-
-// Callback function to execute when mutations are observed
-const callback = function (mutationsList, observer) {
-  console.log(mutationsList);
-};
-
-// Create an observer instance linked to the callback function
-const observer = new MutationObserver(callback);
-
-// Start observing the target node for configured mutations
-observer.observe(targetNode, config);
-
-// Beautifull!! We get mutation events of added children with the ids of these root components.
-document.getElementById("content").innerHTML = `<div id="first">first</div>`;
-document.getElementById("first").innerHTML = `<span id="z"><a>nest</a></span>`;
-// document.getElementById("first").append("<span>append</span>");
-
-// Later, you can stop observing
-// observer.disconnect();
-
-// can we use mutation observers and have a component map based on data id?
-
-/*
-Our component method can sear an ID into the string being returned.
-We will record these ids in a map.
-Then we can select all the nodes with those ids.
-Then we can insert them all into our map of id -> component instance.
-
-function() {
-
-}
-
-const App = component(() => {
-  bind(this, dataModel);
-  return html`
-    <div onclick="${event(this, () => ...)}">${SubComponent()}</div>
-  `;
-});
-
-App();
-*/
-
 let rebindings = {};
-
 let typeId = 0;
 function component(
   render,
@@ -104,7 +41,7 @@ function component(
 
   const type = render.name + '-' + typeId++;
   let id = 0;
-  function* generator(props) {
+  function ret(props) {
     let model;
     if (construct) {
       model = construct();
@@ -112,23 +49,17 @@ function component(
     const self = {
       id: model ? model.id + '-' : '' + type + '-' + id++,
     };
-    while (true) {
-      const rendered = f.call(self, props);
-      if (events) {
-        rebindings[self.id] = events;
-      }
-      // If we re-rendered then we need to re-bind events.
-      // push this component id onto a queue along with the events to bind
-      // TODO: when a dom tree is removed, are the listeners on those nodes removed?
-      yield injectId(id, rendered);
+    const rendered = render.call(self, props);
+    // If we re-rendered then we need to re-bind events.
+    // push this component id onto a queue along with the events to bind
+    if (events) {
+      rebindings[self.id] = events;
     }
+    // TODO: when a dom tree is removed, are the listeners on those nodes removed?
+    return injectId(self.id, rendered);
   }
 
-  return (props) => {
-    // instead of a generator make it an object
-    // return it.
-    // new invocations update state on it.
-  };
+  return ret;
 }
 
 let renderQueue = null;
@@ -149,8 +80,36 @@ function render() {
   renderQueue = null;
   for (let op of operations) {
     // TODO: can we re-pass old props if the component itself requested re-render of itself?
-    document.getElementById(op[0]).innerHTML = component();
+    document.getElementById(op[0]).innerHTML = op[1]().__html__;
   }
+
+  // TODO: go through rebindings and bind events
+  rebindEvents(rebindings);;
+  rebindings = {};
+}
+
+function rebindEvents(rebindings) {
+  Object.keys(rebindings).forEach(
+    rootId => {
+      const events = rebindings[rootId];
+      const eventSelectors = Object.keys(events);
+      if (eventSelectors.length === 0) {
+        return;
+      }
+
+      const rootElem = document.querySelector('#'+rootId);
+      eventSelectors.forEach(selector => {
+        const [event, handler] = events[selector];
+        if (selector === '') {
+          rootElem.addEventListener(event, handler);
+          return;
+        }
+        for (node of rootElem.querySelectorAll(selector)) {
+          node.addEventListener(event, handler)
+        }
+      })
+    },
+  );
 }
 
 function event(component, cb) {
@@ -165,42 +124,36 @@ function event(component, cb) {
   // we can get handle the binding that way...
 }
 
-/*
-could type:
-component(
-  // render func. has a this that is the component
-  (props) => ...,
-  (props) => model, // tells us what the data model is for the component for pinpoint updates.
-  // events. has a this that is the component
-  // we bind events using the selectors scoped to the root id of the component.
-  {
-    button: (props) => ...,
-  },
-);
-*/
-
 function injectId(id, html) {
-  // regex to stick it into the first returned node.
-  // what if the user wants to set an ID? meh. That shouldn't really happen much.
+  html.__html__ =
+    html.__html__.replace(/\<([A-z]+)/, (match, c1) => `<${c1} id="${id}"`);
+  console.log(html.__html__);
+  return html;
 }
 
 function bind(component, data) {
-  // data is our "relational data" that the component will sync with whenever
-  // an update to it is committed to the local db
-  // What if we want ephemeral commits?
+  // How do we find component functions
+  // for the given model?
+  // in a map.
 
-  // how will we unbind component from data?
-  // occasional garbage collection routine to see if components still exist?
-  // weak references?
-  // can a dom node listen for its detachment?
-  // or we can never directly bind. We can make our id prefixed by the data model's id and do querySelectors when a piece of data changes.
-
-  // However, if we get a change event on some data model
-  // only the parent most component should update and none of the siblings that also are bound to that same model.
-  // So we need to track hierarchy.
-
-  // We could ask the dom or we could try to track it ourselves.
-  // E.g., we'll know every node that should process the event.
-  // We can ask the dom which ones are descendants of the other and topologically sort them.
-  // And there can be multiple trees that need updating as the nodes could be siblings.
+  // How do we find nodes?
+  // Prefix ID search?
+  // If no node exists, remove model -> component function mappings for that id
 }
+
+requestRender(
+  'content',
+  component(
+    function App() {
+      return html`<div>Heyoo!</div>`;
+    },
+    // add model getter.
+    // model getters have to be stateless too then? :|
+    // How does component local state work? Since they're pure functions...
+    // Component local state in the relational local DB too?
+    // And bound to that as the model?
+    {
+      '':  ['click', () => console.log('clicked')],
+    },
+  ),
+);
