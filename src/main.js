@@ -120,6 +120,7 @@ function injectId(id, html) {
   return html;
 }
 
+// We shouldn't need these as our state tree and lensing will handle it
 const modelListeners = {};
 function bind(component, data) {
   let listeners = modelListeners[data.id];
@@ -128,32 +129,8 @@ function bind(component, data) {
     modelListeners[data.id] = listeners;
   }
   listeners[component.symbol] = component;
-
-  // ocasionally garbage collect listeners?
-  // by looking for elements based on model id prefix?
 }
 
-// What if the app developer managed the state tree that is passed all
-// around? and lenses it down to sub-components?
-// Our the component function could sub-tree it?
-//
-
-
-// If dev has to `lense` the state to alloc it, how will we free it?
-// State could be aware of lense calls made on it from an ID root at render
-// and if those calls are not made on a subsequent render then they
-// clear?
-// To do updates, the component functions know what state instance they're
-// handling on when it is updated. A single listener can be used
-// and triggered.
-// This means components can not share state then?
-// Model objects would be the shared state?
-// Can the component function track what components are invoked and auto-lense?
-// We know when components invoke sub-components and can thus lense down the state
-// for them.
-// But we don't know how to handle re-ordered components of the same type?
-// We don't know what "name" to give to the state.
-// A conditional button followed by a non-conditional button.
 class State {
   constructor() {
     this._listener = null;
@@ -202,3 +179,37 @@ requestRender(
   {},
   new State(),
 );
+
+
+/*
+We can do lensing with a global variable.
+On re-render, we hold "state" in a global and as `component` instances are called
+we `lense` down.
+
+But to handle the "Same component but rendered conditionally"
+if (x) {
+  <Poop />
+}
+<Poop />
+
+We need a compile time conversion to symbolicate those components.
+
+MyComp() {
+  if (x) {
+    <Poop symbol={this.symbols[0]} />
+  }
+  <Poop symbol={this.symbols[1]} />
+}
+
+Then the component function (which wraps poop) will lense based on the provided
+symbol which was inject at compile time.
+
+On re-renders we'll see if a given lense of the state map was not touched.
+If not we know we can release it as the component was not rendered.
+
+Since we'll have this state/lense/component tree we can use that to
+manage components which are bound to models.
+
+As a state is not lensed we know that component is unmounted and thus we
+know it needs to unbind from any models it was bound to.
+*/
