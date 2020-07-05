@@ -42,7 +42,7 @@ function component(
 
   const type = render.name + '-' + typeId++;
   let id = 0;
-  function ret(props, state) {
+  function ret(props, state, isRooted) {
     let model;
     if (construct) {
       model = construct();
@@ -59,9 +59,9 @@ function component(
     }
 
     const rendered = render.call(self, props, state);
-    // If we re-rendered then we need to re-bind events.
-    // push this component id onto a queue along with the events to bind
-    if (events) {
+
+    // If this !== self then the component has remounted.
+    if (events && this !== self) {
       rebindings[self.id] = [self, events];
     }
 
@@ -70,7 +70,10 @@ function component(
     };
 
     // TODO: when a dom tree is removed, are the listeners on those nodes removed?
-    return injectId(self.id, rendered);
+    if (!isRooted) {
+      return injectId(self.id, rendered);
+    }
+    return rendered;
   }
 
   ret.symbol = Symbol(render.name);
@@ -95,7 +98,7 @@ function render() {
   renderQueue = null;
   for (let [instance, renderFunc] of operations) {
     document.getElementById(instance.id).innerHTML
-      = renderFunc.call(instance, instance.props, instance.state).__html__;
+      = renderFunc.call(instance, instance.props, instance.state, true).__html__;
   }
 
   // ^^ Post rendering here all of the lensing would have happened.
@@ -133,9 +136,14 @@ function rebindEvents(rebindings) {
   );
 }
 
+// We might actually need to wrap the component with our own tag and
+// id instead...
+// but only if we aren't re-rendering.
+// b/c otherwise its already in the dom.
+// and style with https://css-tricks.com/get-ready-for-display-contents/
 function injectId(id, html) {
   html.__html__ =
-    html.__html__.replace(/\<([A-z]+)/, (match, c1) => `<${c1} id="${id}"`);
+    '<div style="display: contents;" id="'+id+'">' + html.__html__ + '</div>';
   return html;
 }
 
@@ -203,7 +211,6 @@ const button = component(
       '':  [
         'click',
         function() {
-          console.log(this);
           this.state.set({
             clickCount: (this.state.clickCount || 0) + 1,
           });
