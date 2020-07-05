@@ -1,3 +1,4 @@
+const tempEl = document.createElement('div');
 const sanitize = (value) => {
   if (value) {
     if (typeof value === "object" && value.__html__) {
@@ -46,18 +47,26 @@ function component(
     if (construct) {
       model = construct();
     }
-    const self = {
-      id: model ? model.id + '-' : '' + type + '-' + id++,
-    };
+    let self;
+    if (this !== globalThis) {
+      self = this;
+    } else {
+      self = {
+        id: model ? model.id + '-' : '' + type + '-' + id++,
+        props: props,
+        state: state,
+      };
+    }
+
     const rendered = render.call(self, props, state);
     // If we re-rendered then we need to re-bind events.
     // push this component id onto a queue along with the events to bind
     if (events) {
-      rebindings[self.id] = events;
+      rebindings[self.id] = [self, events];
     }
 
     state._listener = () => {
-      requestRender(self.id, ret, props, state);
+      requestRender(self, ret);
     };
 
     // TODO: when a dom tree is removed, are the listeners on those nodes removed?
@@ -69,13 +78,13 @@ function component(
 }
 
 let renderQueue = null;
-function requestRender(rootId, component, props, state) {
+function requestRender(instance, renderFunc) {
   if (renderQueue == null) {
     renderQueue = [];
     requestAnimationFrame(render);
   }
 
-  renderQueue.push([rootId, component, props, state]);
+  renderQueue.push([instance, renderFunc]);
 }
 
 function render() {
@@ -84,8 +93,9 @@ function render() {
   // B/c the parent will re-render the child anyway.
   const operations = renderQueue;
   renderQueue = null;
-  for (let [rootId, component, props, state] of operations) {
-    document.getElementById(rootId).innerHTML = component(props, state).__html__;
+  for (let [instance, renderFunc] of operations) {
+    document.getElementById(instance.id).innerHTML
+      = renderFunc.call(instance, instance.props, instance.state).__html__;
   }
 
   // ^^ Post rendering here all of the lensing would have happened.
@@ -101,7 +111,7 @@ function render() {
 function rebindEvents(rebindings) {
   Object.keys(rebindings).forEach(
     rootId => {
-      const events = rebindings[rootId];
+      const [instance, events] = rebindings[rootId];
       const eventSelectors = Object.keys(events);
       if (eventSelectors.length === 0) {
         return;
@@ -110,12 +120,13 @@ function rebindEvents(rebindings) {
       const rootElem = document.querySelector('#'+rootId);
       eventSelectors.forEach(selector => {
         const [event, handler] = events[selector];
+        const fn = (...args) => handler.apply(instance, args);
         if (selector === '') {
-          rootElem.addEventListener(event, handler);
+          rootElem.addEventListener(event, fn);
           return;
         }
         for (node of rootElem.querySelectorAll(selector)) {
-          node.addEventListener(event, handler)
+          node.addEventListener(event, fn)
         }
       })
     },
@@ -142,6 +153,7 @@ function bind(component, data) {
 // State needs to track that which was touched
 // on the current render loop.
 // Then purge that which was not.
+// State can even have a reference to the "instance" of the component
 class State {
   constructor() {
     this._listener = null;
@@ -182,16 +194,30 @@ class State {
 }
 
 const button = component(
+  // TOOD: get initial state func? or ctor since now we can
+  // track mounts and dismounts with our lensing functions and state tree.
   function Button(props, state) {
-    return html`<button>Click me!</button>`;
+    return html`<button>Num clicks: ${state.clickCount || 0}</button>`;
   },
   {
-      '':  ['click', () => console.log('clicked')],
+      '':  [
+        'click',
+        function() {
+          console.log(this);
+          this.state.set({
+            clickCount: (this.state.clickCount || 0) + 1,
+          });
+        },
+      ],
   },
 );
 
 requestRender(
-  'content',
+  {
+    id: 'content',
+    props: {},
+    state: new State(),
+  },
   component(
     function App(props, state) {
       return html`<div>Heyoo!<br />${button(null, state.lense('button'))}</div>`;
@@ -202,8 +228,6 @@ requestRender(
     // Component local state in the relational local DB too?
     // And bound to that as the model?
   ),
-  {},
-  new State(),
 );
 
 
