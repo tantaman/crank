@@ -55,6 +55,11 @@ function component(
     if (events) {
       rebindings[self.id] = events;
     }
+
+    state._listener = () => {
+      requestRender(self.id, ret, props, state);
+    };
+
     // TODO: when a dom tree is removed, are the listeners on those nodes removed?
     return injectId(self.id, rendered);
   }
@@ -80,12 +85,16 @@ function render() {
   const operations = renderQueue;
   renderQueue = null;
   for (let [rootId, component, props, state] of operations) {
-    // TODO: can we re-pass old props if the component itself requested re-render of itself?
     document.getElementById(rootId).innerHTML = component(props, state).__html__;
   }
 
+  // ^^ Post rendering here all of the lensing would have happened.
+  // so we can tell the root state node to `purge`
+  // and it'll purge anything untouched and re-set itself.
+  // state.clean();
+
   // TODO: go through rebindings and bind events
-  rebindEvents(rebindings);;
+  rebindEvents(rebindings);
   rebindings = {};
 }
 
@@ -116,7 +125,6 @@ function rebindEvents(rebindings) {
 function injectId(id, html) {
   html.__html__ =
     html.__html__.replace(/\<([A-z]+)/, (match, c1) => `<${c1} id="${id}"`);
-  console.log(html.__html__);
   return html;
 }
 
@@ -131,27 +139,45 @@ function bind(component, data) {
   listeners[component.symbol] = component;
 }
 
+// State needs to track that which was touched
+// on the current render loop.
+// Then purge that which was not.
 class State {
   constructor() {
     this._listener = null;
+    this._touched = {};
+    this._lenses = {};
   }
 
   lense(name) {
-    const old = this[name];
-    if (old !== undefined) {
-      return old;
+    const entry = this._lenses[name]
+    this._touched[name] = true;
+    if (entry !== undefined) {
+      return entry;
     }
-    return this[name] = new State();
+    return this._lenses[name] = new State();
   }
 
   destroy() {
     this._listener = null;
+    Object.keys(this._lenses).forEach(lense => this._lenses[lense].destory());
+    this._lenses = this._touched = null;
   }
 
   set(state) {
     // TODO: errors on overriding methods.
     Object.keys(state).forEach(k => this[k] = state[k]);
     this._listener();
+  }
+
+  clean() {
+    Object.keys(this._lenses).forEach(lense => {
+      if (!lense in this._touched) {
+        this._lenses[lense].destory();
+        delete this._lenses[lense];
+      }
+    });
+    this._touched = {};
   }
 }
 
