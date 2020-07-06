@@ -1,4 +1,5 @@
 (function() {
+  let constructorGuard = false;
   const tempEl = document.createElement('div');
   const sanitize = (value) => {
     if (value) {
@@ -44,22 +45,23 @@
     const type = render.name + '-' + typeId++;
     let id = 0;
     function ret(props, state, isRooted) {
-      let model;
-      if (construct) {
-        model = construct();
-      }
       let self;
       if (this !== globalThis) {
         self = this;
       } else {
         self = {
-          id: model ? model.id + '-' : '' + type + '-' + id++,
+          id: type + '-' + id++,
           props,
           state,
         };
+        if (construct) {
+          construct(self);
+        }
       }
 
+      constructorGuard = true;
       const rendered = render.call(self, props, state);
+      constructorGuard = false;
 
       // If this !== self then the component has remounted.
       if (events && this !== self) {
@@ -105,7 +107,7 @@
     // ^^ Post rendering here all of the lensing would have happened.
     // so we can tell the root state node to `purge`
     // and it'll purge anything untouched and re-set itself.
-    // state.clean();
+    // state._clean();
 
     // TODO: go through rebindings and bind events
     rebindEvents(rebindings);
@@ -179,27 +181,33 @@
       return this._lenses[name] = new State();
     }
 
-    destroy() {
+    _destroy() {
       this._listener = null;
-      Object.keys(this._lenses).forEach(lense => this._lenses[lense].destory());
+      Object.keys(this._lenses).forEach(lense => this._lenses[lense]._destory());
       this._lenses = this._touched = null;
     }
 
     set(state) {
       // TODO: errors on overriding methods.
       Object.keys(state).forEach(k => this[k] = state[k]);
-      this._listener();
+      if (!constructorGuard) {
+        this._listener();
+      }
     }
 
-    clean() {
+    _clean() {
       Object.keys(this._lenses).forEach(lense => {
         if (!lense in this._touched) {
-          this._lenses[lense].destory();
+          this._lenses[lense]._destory();
           delete this._lenses[lense];
         }
       });
       this._touched = {};
     }
+
+    // Let components attach a "destroy" method to the instance?
+    // that will have cleanup code to run when the component
+    // is unmounted and state removed.
   }
 
   const exports = {

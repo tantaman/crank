@@ -6,6 +6,12 @@
     State,
   } = lensing;
 
+  // const app = component(
+  //   function App(props, state) {
+  //     const remaining = state.items.filter((item) => !item.complete);
+  //   }
+  // );
+
   const button = component(
     // TOOD: get initial state func? or ctor since now we can
     // track mounts and dismounts with our lensing functions and state tree.
@@ -34,6 +40,9 @@
     component(
       function App(props, state) {
         return html`<div>Heyoo!<br />${button(null, state.lense('button'))}</div>`;
+      },
+      (self) => {
+        self.state.set();
       },
       // add model getter.
       // model getters have to be stateless too then? :|
